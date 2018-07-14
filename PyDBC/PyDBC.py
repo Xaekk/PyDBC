@@ -86,7 +86,7 @@ class PyDBC:
                     sql += ' && '
                 sql += key+" = '"+conditions[key]+"'"
         if self.is_debug:
-            print('SQL in [DB.get_all] : ' + sql)
+            print('SQL in [PyDBC.get_all] : ' + sql)
         results = self.execute(sql, False)
         if len(results) < 1:
             results = None
@@ -102,7 +102,7 @@ class PyDBC:
         :return: rows
         """
         result = self.get_all(table, columns, conditions)
-        if len(result) > 0 :
+        if result != None && len(result) > 0 :
             result = result[0]
         else:
             result = None
@@ -128,7 +128,7 @@ class PyDBC:
         value += ' ) '
         sql = 'insert into ' + table + key + ' value ' + value
         if self.is_debug:
-            print('SQL in [DB.save] : ' + sql)
+            print('SQL in [PyDBC.save] : ' + sql)
         row_count = self.execute(sql, True)
         if row_count < 1:
             sys.stderr.write('Fail in saving : SQL in [DB.save] ==> ' + sql + '\n')
@@ -158,7 +158,7 @@ class PyDBC:
             print(sql)
         row_count = self.execute(sql, True)
         if row_count < 1:
-            sys.stderr.write('Fail in updating : SQL in [DB.save] ==> ' + sql + '\n')
+            sys.stderr.write('Fail in updating : SQL in [PyDBC.save] ==> ' + sql + '\n')
         return row_count
 
     def delete(self, table, conditions):
@@ -178,5 +178,5 @@ class PyDBC:
             print(sql)
         row_count = self.execute(sql, True)
         if row_count < 1:
-            sys.stderr.write('Fail in updating : SQL in [DB.save] ==> ' + sql + '\n')
+            sys.stderr.write('Fail in updating : SQL in [PyDBC.save] ==> ' + sql + '\n')
         return row_count
