@@ -102,7 +102,7 @@ class PyDBC:
         :return: rows
         """
         result = self.get_all(table, columns, conditions)
-        if result != None && len(result) > 0 :
+        if result != None and len(result) > 0 :
             result = result[0]
         else:
             result = None
