@@ -123,7 +123,10 @@ class PyDBC:
                 key += ' , '
                 value += ' , '
             key += key_
-            value += "'" + value_ + "'"
+            if len(value_)>0:
+                value += "'" + ''.join(value_) + "'"
+            else:
+                value += "''"
         key += ' ) '
         value += ' ) '
         sql = 'insert into ' + table + key + ' value ' + value
