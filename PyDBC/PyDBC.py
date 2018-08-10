@@ -36,7 +36,9 @@ class PyDBC:
         self.connection = pymysql.connect(host = self.host,
                                          user = self.user,
                                          password = self.password,
-                                         db = self.db)
+                                         db = self.db,
+                                         use_unicode=True,
+                                         charset='utf8')
 
     def close(self):
         """ Close """
