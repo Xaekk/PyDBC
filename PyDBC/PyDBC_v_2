@@ -33,7 +33,7 @@ class PyDBC:
     thread_amount = 10
     # Other Parameter
     connection = None
-    lock = threading.Lock()
+    lock = threading.Lock() 
 
     def __init__(self):
         """ Initialize """
