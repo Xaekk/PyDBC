@@ -158,13 +158,16 @@ class PyDBC:
         :return: row_count affected
         """
         values_batches = []
-        loops = len(values) // self.save_many_batch
-        print('Preparing loops...')
-        for index in tqdm(range(loops)):
-            if index < loops:
-                values_batches.append(values[index * self.save_many_batch: (index+1) * self.save_many_batch])
-            else:
-                values_batches.append(values[index * self.save_many_batch:])
+        if self.save_many_batch > 0:
+            loops = len(values) // self.save_many_batch
+            print('Preparing loops...')
+            for index in tqdm(range(loops)):
+                if index < loops:
+                    values_batches.append(values[index * self.save_many_batch: (index+1) * self.save_many_batch])
+                else:
+                    values_batches.append(values[index * self.save_many_batch:])
+        else:
+            values_batches.append(values[:])
 
         print('Saving...')
         threads = []
