@@ -149,6 +149,14 @@ class PyDBC:
         self.save_many(table, row, values_batch)
 
     def save_many_by_batch(self, table, row, values):
+        """
+        Insert Many Data into Table
+        :warning row & value must be the same order
+        :param table: table name ( type : string)
+        :param rows: row name ( type : list )
+        :param values: values ( type : list )
+        :return: row_count affected
+        """
         values_batches = []
         loops = len(values) // self.save_many_batch
         print('Preparing loops...')
