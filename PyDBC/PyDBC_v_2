@@ -267,7 +267,7 @@ class PyDBC:
         for index,( key, value) in enumerate(conditions.items()):
             if index > 0:
                 sql += ' && '
-            sql += key + " = '" + value + "'"
+            sql += "{} = '{}'".format(key, value)
         if self.is_debug:
             print(sql)
         row_count = self.execute(sql, True)
