@@ -17,6 +17,7 @@ API:<br>
 &nbsp;&nbsp;&nbsp;&nbsp;save : Insert Data into Table<br>
 &nbsp;&nbsp;&nbsp;&nbsp;update : Update Data<br>
 &nbsp;&nbsp;&nbsp;&nbsp;delete : Delete Data<br>
+&nbsp;&nbsp;&nbsp;&nbsp;query_close : query & close connection
  
 <strong>More Details is on Source</strong><br>
 
