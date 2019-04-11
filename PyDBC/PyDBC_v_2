@@ -274,3 +274,8 @@ class PyDBC:
         if row_count < 1:
             sys.stderr.write('Fail in updating : SQL in [PyDBC.save] ==> ' + sql + '\n')
         return row_count
+        
+    def query_close(self, table, columns=None, conditions=None):
+        datalist = self.get_all(table=table, columns=columns, conditions=conditions)
+        self.close()
+        return datalist
