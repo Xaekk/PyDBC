@@ -154,14 +154,14 @@ class PyDBC:
         :warning row & value must be the same order
         :param table: table name ( type : string)
         :param rows: row name ( type : list )
-        :param values: values ( type : list )
+        :param values: values ( type : list of list )
         :return: row_count affected
         """
         values_batches = []
         if self.save_many_batch > 0:
             loops = len(values) // self.save_many_batch
             print('Preparing loops...')
-            for index in tqdm(range(loops)):
+            for index in tqdm(range(loops+1)):
                 if index < loops:
                     values_batches.append(values[index * self.save_many_batch: (index+1) * self.save_many_batch])
                 else:
