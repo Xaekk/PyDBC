@@ -284,3 +284,4 @@ class PyDBC:
         datalist = self.get_all(table=table, columns=columns, conditions=conditions)
         self.close()
         return datalist
+
