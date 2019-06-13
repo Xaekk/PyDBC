@@ -5,6 +5,7 @@ import pymysql
 import sys
 from tqdm import tqdm
 import threading
+from concurrent.futures import ThreadPoolExecutor, wait
 
 """
 ** Python Database Connectivity
@@ -157,6 +158,8 @@ class PyDBC:
         :param values: values ( type : list of list )
         :return: row_count affected
         """
+        executor = ThreadPoolExecutor(max_workers=self.thread_amount)
+        tasks = []
         values_batches = []
         if self.save_many_batch > 0:
             loops = len(values) // self.save_many_batch
@@ -172,15 +175,17 @@ class PyDBC:
         print('Saving...')
         threads = []
         for values_batch in tqdm(values_batches):
-            t = threading.Thread(target=self.save_many_worker, args=(table, row, values_batch,))
-            t.start()
-            threads.append(t)
-            if len(threads) > (self.thread_amount - 1 if self.thread_amount > 0 else 0):
-                for t in threads:
-                    t.join()
-                threads = []
-        for t in threads:
-            t.join()
+            tasks.append(executor.submit(self.save_many_worker, table, row, values_batch,))
+        #     t = threading.Thread(target=self.save_many_worker, args=(table, row, values_batch,))
+        #     t.start()
+        #     threads.append(t)
+        #     if len(threads) > (self.thread_amount - 1 if self.thread_amount > 0 else 0):
+        #         for t in threads:
+        #             t.join()
+        #         threads = []
+        # for t in threads:
+        #     t.join()
+        wait(tasks)
 
 
     def save_many(self, table, row, values):
