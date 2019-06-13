@@ -6,6 +6,7 @@ import sys
 from tqdm import tqdm
 import threading
 from concurrent.futures import ThreadPoolExecutor, wait
+from queue import Queue
 
 """
 ** Python Database Connectivity
@@ -32,9 +33,10 @@ class PyDBC:
     is_debug = False
     save_many_batch = 10000 # 0 means unlimit
     thread_amount = 10
+
+    pool_amount = 5
     # Other Parameter
     connection = None
-    lock = threading.Lock() 
 
     def __init__(self):
         """ Initialize """
@@ -58,7 +60,6 @@ class PyDBC:
         :return: if execute : row count affected
                   if query  :  the result
         """
-        self.lock.acquire()
         with self.connection.cursor() as cursor:
             cursor.execute(sql)
             if is_exe:
@@ -66,7 +67,6 @@ class PyDBC:
                 self.connection.commit()
             else:
                 result = cursor.fetchall()
-        self.lock.release()
         return result
 
     def get_all(self, table, columns=None, conditions=None):
@@ -79,7 +79,7 @@ class PyDBC:
         :return: rows
         """
         sql = 'select '
-        if columns != None and len(columns)>0:
+        if columns != None and len(columns) > 0:
             for index, column in enumerate(columns):
                 if index > 0:
                     sql += ' , '
@@ -147,11 +147,14 @@ class PyDBC:
 
 
     def save_many_worker(self, table, row, values_batch):
-        self.save_many(table, row, values_batch)
+        pyDBC = self.connector_queue.get()
+        pyDBC.save_many(table, row, values_batch)
+        self.connector_queue.put(pyDBC)
 
-    def save_many_by_batch(self, table, row, values):
+
+    def _save_many_by_batch(self, table, row, values):
         """
-        Insert Many Data into Table
+        Insert Many Data into Table (Private)
         :warning row & value must be the same order
         :param table: table name ( type : string)
         :param rows: row name ( type : list )
@@ -186,6 +189,42 @@ class PyDBC:
         # for t in threads:
         #     t.join()
         wait(tasks)
+
+
+    def save_many_by_batch(self, table, row, values):
+        """
+        Insert Many Data into Table
+        :warning row & value must be the same order
+        :param table: table name ( type : string)
+        :param rows: row name ( type : list )
+        :param values: values ( type : list of list )
+        :return: row_count affected
+        """
+        self.init_pool()
+        self._save_many_by_batch(table, row, values)
+        self.close_pool()
+
+
+    def init_pool(self):
+        """
+        初始化连接池
+        :return: 
+        """
+        self.connector_queue = Queue()
+        self.connector_queue.put(self)
+        while self.connector_queue.qsize() < self.pool_amount:
+            self.connector_queue.put(PyDBC())
+
+
+    def close_pool(self):
+        """
+        关闭连接池
+        :return: 
+        """
+        while not self.connector_queue.empty():
+            pyDBC = self.connector_queue.get()
+            if pyDBC != self:
+                pyDBC.close()
 
 
     def save_many(self, table, row, values):
@@ -284,4 +323,3 @@ class PyDBC:
         datalist = self.get_all(table=table, columns=columns, conditions=conditions)
         self.close()
         return datalist
-
