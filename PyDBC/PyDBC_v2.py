@@ -7,6 +7,7 @@ from tqdm import tqdm
 import threading
 from concurrent.futures import ThreadPoolExecutor, wait
 from queue import Queue
+import time
 
 """
 ** Python Database Connectivity
@@ -177,7 +178,7 @@ class PyDBC:
 
         print('Saving...')
         threads = []
-        for values_batch in tqdm(values_batches):
+        for values_batch in values_batches:
             tasks.append(executor.submit(self.save_many_worker, table, row, values_batch,))
         #     t = threading.Thread(target=self.save_many_worker, args=(table, row, values_batch,))
         #     t.start()
@@ -188,10 +189,13 @@ class PyDBC:
         #         threads = []
         # for t in threads:
         #     t.join()
-        wait(tasks)
+        for task in tqdm(tasks):
+            while not task.done():
+                time.sleep(0.01)
+        # wait(tasks)
 
 
-    def save_many_by_batch(self, table, row, values):
+    def save_many_by_batch(self, table, row, values, **kwargs):
         """
         Insert Many Data into Table
         :warning row & value must be the same order
@@ -200,6 +204,11 @@ class PyDBC:
         :param values: values ( type : list of list )
         :return: row_count affected
         """
+        if 'save_many_batch' in kwargs.keys():
+            self.save_many_batch = kwargs['save_many_batch']
+        if 'thread_amount' in kwargs.keys():
+            self.thread_amount = kwargs['thread_amount']
+
         self.init_pool()
         self._save_many_by_batch(table, row, values)
         self.close_pool()
