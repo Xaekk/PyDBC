@@ -3,20 +3,16 @@
 
 import pymysql
 import sys
-from tqdm import tqdm
-import threading
-from concurrent.futures import ThreadPoolExecutor, wait
+from concurrent.futures.thread import ThreadPoolExecutor
+from threading import Lock
+import math
 from queue import Queue
-import time
-
+from tqdm import tqdm
 """
 ** Python Database Connectivity
-
  * @author Ma Xuefeng
-
- * @date 2018/11/19
-
- * @version v2.0.0
+ * @date 2019/7/25
+ * @version v3.0.0
 """
 class PyDBC:
     """
@@ -32,303 +28,226 @@ class PyDBC:
     # is_debug : True  - print(sql)
     #            False - silence
     is_debug = False
-    save_many_batch = 10000 # 0 means unlimit
-    thread_amount = 10
-
-    pool_amount = 5
     # Other Parameter
     connection = None
 
-    def __init__(self):
+
+    def __init__(self, host=None, user=None, password=None, db=None):
         """ Initialize """
         # Create database connection
-        self.connection = pymysql.connect(host = self.host,
-                                         user = self.user,
-                                         password = self.password,
-                                         db = self.db)
+        self.host = host if host != None else self.host
+        self.user = user if user != None else self.user
+        self.password = password if password != None else self.password
+        self.db = db if db != None else self.db
+
+        self.connection = pymysql.connect(host=self.host, user=self.user, password=self.password, db=self.db, use_unicode=True, charset='utf8')
+
 
     def close(self):
         """ Close """
         self.connection.close()
 
-    def execute(self, sql, is_exe=False):
+
+    def execute_sql(self, sql):
+        """
+        Execute SQL
+        :param sql: sql statements (type: string)
+        :return: row_count affected
+        """
+        with self.connection.cursor() as cursor:
+            cursor.execute(sql)
+            result = cursor.rowcount
+            self.connection.commit()
+        return result
+
+
+    def execute(self, sql, datas=()):
         """
         Fetch Rows from Table
-
         :param sql: sql statements
-        :param is_exe: if is execute : True
-                       if is query   : False
+        :param datas: execute data (type: list)
         :return: if execute : row count affected
                   if query  :  the result
         """
         with self.connection.cursor() as cursor:
-            cursor.execute(sql)
-            if is_exe:
+            if len(datas) == 1:
+                cursor.execute(sql, list(datas)[0])
+                result = cursor.rowcount
+                self.connection.commit()
+            elif len(datas) > 1:
+                cursor.executemany(sql, list(datas))
                 result = cursor.rowcount
                 self.connection.commit()
             else:
+                cursor.execute(sql)
                 result = cursor.fetchall()
         return result
 
-    def get_all(self, table, columns=None, conditions=None):
+
+    def get(self, table, columns=None, conditions=None, limit=None, more_command=None):
         """
         Fetch Rows from Table
-
         :param table: table name ( type : string)
         :param column: column name ( type : list)
         :param conditions:  key & value ( type : dictionary)
+        :param limit: limit count of resualt (type: int)
+        :param more_command: more command add at the last (type: string)
         :return: rows
         """
-        sql = 'select '
-        if columns != None and len(columns) > 0:
-            for index, column in enumerate(columns):
-                if index > 0:
-                    sql += ' , '
-                sql += column
-        else:
-            sql += ' * '
-        sql += ' from ' + table
-        if conditions != None and len(conditions) > 0:
-            sql += ' where '
-            for index, (key, value) in enumerate(conditions.items()):
-                if index > 0:
-                    sql += ' && '
-                sql += "{} = '{}'".format(key, conditions[key])
+        def del_space(str_):
+            while str_.__class__ == str and '  ' in str_:
+                str_ = str_.replace('  ', ' ')
+            return str_
+        def judge_condition(k, v):
+            v = del_space(v)
+            if v in [del_space('{} {} {}'.format(i, n, nu))
+                     for i in ['IS', 'Is', 'is']
+                     for n in ['NOT', 'Not', 'not', '']
+                     for nu in ['NULL', 'Null', 'null']]:
+                return ' {} {}'.format(k, v)
+            elif v.__class__ == int:
+                return "{}={}".format(k, v)
+            if v.__class__ == str:
+                return "{} LIKE '{}'".format(k, v)
+
+        columns_str = ' , '.join(columns) if columns != None else '*'
+        conditions_str = ' WHERE ' + ' AND '.join([judge_condition(k, v) for k, v in conditions.items()]) if conditions != None else ''
+        limit_str = ' LIMIT {}'.format(limit) if limit != None else ''
+        more_command_str = more_command if more_command.__class__ == str else ''
+
+        sql = 'select {0} from {1} {2} {3} {4}'.format(columns_str, table, conditions_str, limit_str, more_command_str)
+
         if self.is_debug:
-            print('SQL in [PyDBC.get_all] : ' + sql)
-        results = self.execute(sql, False)
+            print('SQL in [PyDBC.get] : ' + sql)
+        results = self.execute(sql)
         if len(results) < 1:
-            results = None
+            results = []
+
         return results
 
-    def get_one(self, table, columns=None, conditions=None):
-        """
-        Fetch One Row from Table
-
-        :param table: table name ( type : string)
-        :param column: column name ( type : list)
-        :param conditions:  key & value ( type : dictionary)
-        :return: rows
-        """
-        result = self.get_all(table, columns, conditions)
-        if result != None and len(result) > 0 :
-            result = result[0]
-        else:
-            result = None
-        return result
 
     def save(self, table, rows):
         """
         Insert Data into Table
-
         :param table: table name ( type : string)
         :param rows: key & values ( type : dictionary )
         :return: row_count affected
         """
-        key =' ( '
-        value = '( '
-        for index, (key_, value_) in enumerate(rows.items()):
-            if index > 0:
-                key += ' , '
-                value += ' , '
-            key += key_
-            if len('{}'.format(value_))>0:
-                value += "'{}'".format(value_)
-            else:
-                value += "''"
-        key += ' ) '
-        value += ' ) '
-        sql = 'insert into ' + table + key + ' value ' + value
+        key_str = ' ,'.join(rows.keys())
+        values = rows.values()
+        values_str = " ,".join(['%s']*len(values))
+
+        sql = 'INSERT INTO {0} ({1}) VALUES ({2})'.format(table, key_str, values_str)
         if self.is_debug:
             print('SQL in [PyDBC.save] : ' + sql)
-        row_count = self.execute(sql, True)
+            print(values)
+        row_count = self.execute(sql, values)
         if row_count < 1:
-            sys.stderr.write('Fail in saving : SQL in [DB.save] ==> ' + sql + '\n')
+            sys.stderr.write('Fail in saving : SQL in [PyDBC.save] ==> ' + sql + '\n')
+            sys.stderr.write('Fail in saving : Datas in [PyDBC.save] ==> ' + str(list(values)) + '\n')
         return row_count
 
 
-    def save_many_worker(self, table, row, values_batch):
-        pyDBC = self.connector_queue.get()
-        pyDBC.save_many(table, row, values_batch)
-        self.connector_queue.put(pyDBC)
-
-
-    def _save_many_by_batch(self, table, row, values):
+    def save_many(self, table, columns, rows):
         """
-        Insert Many Data into Table (Private)
-        :warning row & value must be the same order
-        :param table: table name ( type : string)
-        :param rows: row name ( type : list )
-        :param values: values ( type : list of list )
+        Insert many data into Table
+        :param table: table name (type : string)
+        :param columns: columns names (type: list)
+        :param rows: data rows (type: list of list))
         :return: row_count affected
         """
-        executor = ThreadPoolExecutor(max_workers=self.thread_amount)
-        tasks = []
-        values_batches = []
-        if self.save_many_batch > 0:
-            loops = len(values) // self.save_many_batch
-            print('Preparing loops...')
-            for index in tqdm(range(loops+1)):
-                if index < loops:
-                    values_batches.append(values[index * self.save_many_batch: (index+1) * self.save_many_batch])
-                else:
-                    values_batches.append(values[index * self.save_many_batch:])
-        else:
-            values_batches.append(values[:])
+        key_str = ' ,'.join(columns)
+        values = rows
+        values_str = " ,".join(['%s'] * len(columns))
 
-        print('Saving...')
-        threads = []
-        for values_batch in values_batches:
-            tasks.append(executor.submit(self.save_many_worker, table, row, values_batch,))
-        #     t = threading.Thread(target=self.save_many_worker, args=(table, row, values_batch,))
-        #     t.start()
-        #     threads.append(t)
-        #     if len(threads) > (self.thread_amount - 1 if self.thread_amount > 0 else 0):
-        #         for t in threads:
-        #             t.join()
-        #         threads = []
-        # for t in threads:
-        #     t.join()
-        for task in tqdm(tasks):
-            while not task.done():
-                time.sleep(0.01)
-        # wait(tasks)
-
-
-    def save_many_by_batch(self, table, row, values, **kwargs):
-        """
-        Insert Many Data into Table
-        :warning row & value must be the same order
-        :param table: table name ( type : string)
-        :param rows: row name ( type : list )
-        :param values: values ( type : list of list )
-        :return: row_count affected
-        """
-        if 'save_many_batch' in kwargs.keys():
-            self.save_many_batch = kwargs['save_many_batch']
-        if 'thread_amount' in kwargs.keys():
-            self.thread_amount = kwargs['thread_amount']
-
-        self.init_pool()
-        self._save_many_by_batch(table, row, values)
-        self.close_pool()
-
-
-    def init_pool(self):
-        """
-        初始化连接池
-        :return: 
-        """
-        self.connector_queue = Queue()
-        self.connector_queue.put(self)
-        while self.connector_queue.qsize() < self.pool_amount:
-            self.connector_queue.put(PyDBC())
-
-
-    def close_pool(self):
-        """
-        关闭连接池
-        :return: 
-        """
-        while not self.connector_queue.empty():
-            pyDBC = self.connector_queue.get()
-            if pyDBC != self:
-                pyDBC.close()
-
-
-    def save_many(self, table, row, values):
-        """
-        Insert Many Data into Table
-        :warning row & value must be the same order
-        :param table: table name ( type : string)
-        :param rows: row name ( type : list )
-        :param values: values ( type : list )
-        :return: row_count affected
-        """
-        if self.is_debug:
-            print('Preparing Keys...')
-        key =' ( '
-        def add_keys(index, key, key_):
-            if index > 0:
-                key += ' , '
-            key += key_
-            return key
-        for index, key_ in enumerate(row):
-            key = add_keys(index, key, key_)
-        key += ' ) '
-
-        if self.is_debug:
-            print('Prepare Values...')
-        value = ''
-        def add_values(index, value, value_row):
-            if index > 0:
-                value += ','
-            value += '('
-            for i, value_ in enumerate(value_row):
-                if i > 0:
-                    value += ','
-                value += "'{}'".format(value_) if value_ != None else "{}".format('NULL')
-            value += ')'
-            return value
-        for index, value_row in enumerate(values):
-            value = add_values(index, value, value_row)
-
-        sql = 'insert into {} {} values {} '.format(table, key, value)
+        sql = 'INSERT INTO {0} ({1}) VALUES ({2})'.format(table, key_str, values_str)
         if self.is_debug:
             print('SQL in [PyDBC.save_many] : ' + sql)
-        row_count = self.execute(sql, True)
+            print(values)
+        row_count = self.execute(sql, values)
         if row_count < 1:
-            sys.stderr.write('Fail in saving : SQL in [DB.save] ==> ' + sql + '\n')
+            sys.stderr.write('Fail in saving : SQL in [PyDBC.save] ==> ' + sql + '\n')
+            sys.stderr.write('Fail in saving : Datas in [PyDBC.save] ==> ' + str(list(values)) + '\n')
         return row_count
 
-    def update(self, table, columns, conditions):
+
+    def save_many_batch(self, table, columns, rows, batch_size, workers=None, pool_size=10):
+        """
+        Insert many data by Batch into Table
+        :param table: table name (type : string)
+        :param columns: columns names (type: list)
+        :param rows: data rows (type: list of list))
+        :param batch_size: batch size (type: int)
+        :param workers: workers size (type: int)
+        :param pool_size: pool size (type: int)
+        :return: row_count affected
+        """
+        key_str = ' ,'.join(columns)
+        values_str = " ,".join(['%s'] * len(columns))
+
+        sql = 'INSERT INTO {0} ({1}) VALUES ({2})'.format(table, key_str, values_str)
+
+        batchs = [rows[n*batch_size: (n+1)*batch_size] for n in range(math.ceil(len(rows)/batch_size))]
+
+        pyDBC_Pools = Queue()
+        pyDBC_Pools.put(self)
+        [pyDBC_Pools.put(PyDBC(host=self.host, user=self.user, password=self.password, db=self.db)) for _ in range(pool_size-1)]
+
+        row_count = 0
+        lock = Lock()
+        def save_worker(sql, values):
+            nonlocal row_count
+            pyDBC = pyDBC_Pools.get()
+            try:
+                r_c = pyDBC.execute(sql, values)
+                lock.acquire()
+                row_count += r_c
+                lock.release()
+            except BaseException:
+                pass
+            finally:
+                pyDBC_Pools.put(pyDBC)
+        with ThreadPoolExecutor(max_workers=workers) if workers.__class__ == int else ThreadPoolExecutor() as executor:
+            list(tqdm(executor.map(lambda batch: save_worker(sql, batch), batchs), total=len(batchs)))
+
+        list(map(lambda p: p.close() if p != self else None, pyDBC_Pools.queue))
+        return row_count
+
+
+    def update(self, table, columns, conditions=None):
         """
         Update Data
-
-        :param table: table name ( type : string )
-        :param columns: key & values ( type : dictionary )
-        :param conditions: key & values ( type : dictionary )
-        :return: row count affected
+        :param table: table name (type : string)
+        :param columns: key & values (type : dict)
+        :param conditions: key & values ( type : dict )
+        :return: row_count affected
         """
-        set_sql = ''
-        conditions_sql = ''
-        for index,( key, value) in enumerate(columns.items()):
-            if index > 0 :
-                set_sql += ' , '
-            set_sql += " {} = '{}'".format(key, value)
-        for index, (key, value) in enumerate(conditions.items()):
-            if index > 0:
-                conditions_sql += ' && '
-            conditions_sql += " {} = '{}'".format(key, value)
-        sql = 'update ' + table + ' set ' + set_sql + ' where ' + conditions_sql
+        columns_str = ' , '.join(['{} = %s'.format(k) for k in columns.keys()])
+        conditions_str = ' WHERE ' + ' AND '.join(["{} = %s".format(k) for k in conditions.keys()]) if conditions != None else ''
+
+        sql = 'UPDATE {0} SET {1} {2}'.format(table, columns_str, conditions_str)
         if self.is_debug:
-            print(sql)
-        row_count = self.execute(sql, True)
-        if row_count < 1:
-            sys.stderr.write('Fail in updating : SQL in [PyDBC.save] ==> ' + sql + '\n')
+            print('SQL in [PyDBC.update] : ' + sql)
+        row_count = self.execute(sql, [list(columns.values()) + list(conditions.values())])
         return row_count
 
-    def delete(self, table, conditions):
+
+    def delete(self, table, conditions=None):
         """
         Delete Data
-
         :param table: table name ( type : string )
         :param conditions: key & values ( type : dictionary )
         :return: row count affected
         """
-        sql = 'delete from ' + table + ' where '
-        for index,( key, value) in enumerate(conditions.items()):
-            if index > 0:
-                sql += ' && '
-            sql += "{} = '{}'".format(key, value)
+        def judge_condition(k, v):
+            if v.__class__ == int:
+                return '{} = %s'.format(k, v)
+            elif v.__class__ == str:
+                return "{} LIKE %s".format(k, v)
+        conditions_str = ' WHERE ' + ' AND '.join([judge_condition(k, v) for k, v in conditions.items()]) if conditions != None else ''
+
+        sql = 'DELETE FROM {0} {1}'.format(table, conditions_str)
         if self.is_debug:
-            print(sql)
-        row_count = self.execute(sql, True)
-        if row_count < 1:
-            sys.stderr.write('Fail in updating : SQL in [PyDBC.save] ==> ' + sql + '\n')
+            print('SQL in [PyDBC.delete] : ' + sql)
+        row_count = self.execute(sql, [list(conditions.values())])
         return row_count
-        
-    def query_close(self, table, columns=None, conditions=None):
-        datalist = self.get_all(table=table, columns=columns, conditions=conditions)
-        self.close()
-        return datalist
