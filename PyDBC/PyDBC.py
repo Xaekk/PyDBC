@@ -251,3 +251,11 @@ class PyDBC:
             print('SQL in [PyDBC.delete] : ' + sql)
         row_count = self.execute(sql, [list(conditions.values())])
         return row_count
+
+
+    @staticmethod
+    def query_close(table, host=None, user=None, password=None, db=None, columns=None, conditions=None, limit=None, more_command=None):
+        pyDBC = PyDBC(host, user, password, db)
+        result = pyDBC.get(table, columns, conditions, limit, more_command)
+        pyDBC.close()
+        return result

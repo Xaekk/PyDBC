@@ -11,9 +11,9 @@ API:<br>
 &nbsp;&nbsp;Function:<br>
 &nbsp;&nbsp;&nbsp;&nbsp;__init__ : Initialize<br>
 &nbsp;&nbsp;&nbsp;&nbsp;close : Close Connection<br>
+&nbsp;&nbsp;&nbsp;&nbsp;execute_sql : Execute SQL<br>
 &nbsp;&nbsp;&nbsp;&nbsp;execute : Execute SQL<br>
-&nbsp;&nbsp;&nbsp;&nbsp;get_all : Fetch All Rows from Table<br>
-&nbsp;&nbsp;&nbsp;&nbsp;get_one : Fetch One Rows from Table<br>
+&nbsp;&nbsp;&nbsp;&nbsp;get : Fetch All Rows from Table<br>
 &nbsp;&nbsp;&nbsp;&nbsp;save : Insert Data into Table<br>
 &nbsp;&nbsp;&nbsp;&nbsp;update : Update Data<br>
 &nbsp;&nbsp;&nbsp;&nbsp;delete : Delete Data<br>
